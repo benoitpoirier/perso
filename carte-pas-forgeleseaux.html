@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carte du Pôle d'Accompagnement à la Scolarité — Pays de Bray</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --c-maternelle:#e8734a;
+    --c-elementaire:#3a7bd5;
+    --c-primaire:#1a9e88;
+    --c-college:#7b4fd6;
+    --c-lycee:#c1274d;
+    --ink:#1f2937;
+    --paper:#fbfaf7;
+    --panel-bg: rgba(251,250,247,0.92);
+    --line-soft: rgba(31,41,55,0.12);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;width:100%;background:var(--paper);}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);overflow:hidden;}
+
+  #app{position:relative;width:100vw;height:100vh;}
+
+  /* ---------- Map stage ---------- */
+  #map-stage{position:absolute;inset:0;}
+  #map{position:absolute;inset:0;background:#eef1ee;}
+  #connectors{position:absolute;inset:0;width:100%;height:100%;z-index:400;pointer-events:none;}
+
+  .leaflet-container{font-family:'Inter',sans-serif;}
+  .leaflet-control-attribution{
+    font-size:9.5px !important;
+    background:rgba(255,255,255,0.55) !important;
+    opacity:0.75;
+  }
+
+  /* ---------- Noms de villes (lisibles, en gras) ---------- */
+  .leaflet-tooltip.city-label{
+    background:transparent;border:none;box-shadow:none;padding:0;margin:0;
+    font-family:'Poppins',sans-serif;font-weight:700;font-size:13px;
+    color:#3d4650;letter-spacing:.2px;white-space:nowrap;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 5px #fff,0 0 5px #fff,0 0 5px #fff;
+    pointer-events:none;
+  }
+  .leaflet-tooltip.city-label::before{display:none;}
+
+  /* ---------- Villes de contexte (non grasses) ---------- */
+  .leaflet-tooltip.context-label{
+    background:transparent;border:none;box-shadow:none;padding:0;margin:0;
+    font-family:'Inter',sans-serif;font-weight:500;font-size:14px;
+    color:#6b7280;letter-spacing:.15px;white-space:nowrap;font-style:italic;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 4px #fff;
+    pointer-events:none;
+  }
+  .leaflet-tooltip.context-label::before{display:none;}
+
+  /* ---------- Label columns ---------- */
+  .label-col{
+    position:absolute;
+    top:118px; bottom:100px;
+    width:290px;
+    z-index:600;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:6px 0;
+    pointer-events:none;
+  }
+  #col-left{
+    left:0;
+    top:0; bottom:0; /* colonne la plus fournie : exploite toute la hauteur de l'écran */
+    background:linear-gradient(to right, var(--panel-bg) 62%, rgba(251,250,247,0));
+    padding-left:14px;
+    align-items:flex-start;
+  }
+  #col-right{
+    right:0;
+    top:0; bottom:0; /* exploite toute la hauteur de l'écran, comme la colonne de gauche */
+    background:linear-gradient(to left, var(--panel-bg) 62%, rgba(251,250,247,0));
+    padding-right:14px;
+    align-items:flex-end;
+  }
+
+  .label-item{
+    pointer-events:auto;
+    max-width:262px;
+    display:flex;
+    align-items:center;
+    gap:0.6em;
+    background:rgba(255,255,255,0.85);
+    border:1px solid var(--line-soft);
+    border-radius:8px;
+    padding:0.4em 0.8em;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);
+    cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  #col-right .label-item{flex-direction:row-reverse;}
+  .label-item:hover, .label-item.active{
+    transform:scale(1.04);
+    box-shadow:0 4px 12px rgba(0,0,0,0.15);
+    background:#ffffff;
+    z-index:5;
+  }
+  .label-dot{
+    width:0.62em;height:0.62em;border-radius:50%;flex:0 0 auto;
+    box-shadow:0 0 0 2px rgba(255,255,255,0.9);
+  }
+  .label-text{min-width:0;line-height:1.2;}
+  .label-name{
+    display:block;font-weight:600;font-size:1em;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;
+  }
+  #col-right .label-name{text-align:right;}
+  .label-commune{
+    display:block;font-size:0.85em;font-weight:500;color:#6b7280;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;
+    text-transform:capitalize;
+  }
+  #col-right .label-commune{text-align:right;}
+
+  /* ---------- Custom pin markers ---------- */
+  .pin-wrap{position:relative;width:26px;height:34px;}
+  .pin-shape{
+    position:absolute;top:0;left:0;width:26px;height:26px;border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);border:2px solid #fff;
+    box-shadow:0 2px 5px rgba(0,0,0,0.35);
+  }
+  .pin-dot{
+    position:absolute;top:7px;left:7px;width:12px;height:12px;border-radius:50%;
+    background:#fff;
+  }
+  .pin-wrap.active .pin-shape{box-shadow:0 0 0 5px rgba(0,0,0,0.12),0 3px 8px rgba(0,0,0,0.4);}
+
+  /* ---------- Header (poster title) : centré sur le tiers droit de l'écran ---------- */
+  #poster-header{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    z-index:700;text-align:center;
+    background:rgba(255,255,255,0.88);
+    border:1px solid var(--line-soft);
+    border-radius:14px;
+    padding:12px 34px 13px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.12);
+    backdrop-filter:blur(4px);
+    max-width:30vw;
+  }
+  #poster-header h1{
+    margin:0;font-family:'Poppins',sans-serif;font-weight:700;font-size:21px;
+    letter-spacing:.3px;color:var(--ink);
+  }
+  #poster-header p{
+    margin:4px 0 0;font-size:12.5px;font-weight:500;color:#5b6472;letter-spacing:.2px;
+  }
+  #poster-header .badge{
+    display:inline-block;margin-top:6px;font-size:10px;font-weight:600;letter-spacing:.6px;
+    text-transform:uppercase;color:#1a9e88;background:#eafaf6;border:1px solid #bfe9de;
+    border-radius:20px;padding:2px 10px;
+  }
+
+  /* ---------- Legend : centrée sur le tiers gauche de l'écran ---------- */
+  #legend{
+    position:absolute;bottom:14px;left:40%;transform:translateX(-50%);
+    z-index:700;
+    background:rgba(255,255,255,0.92);
+    border:1px solid var(--line-soft);
+    border-radius:12px;
+    padding:8px 20px;
+    box-shadow:0 6px 18px rgba(0,0,0,0.12);
+    font-size:11.5px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    max-width:450px;
+  }
+  #legend h3{
+    margin:0 0 5px;font-family:'Poppins',sans-serif;font-size:10.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.6px;color:#4b5563;text-align:center;
+  }
+  #legend-items{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:4px 18px;}
+  .legend-row{display:flex;align-items:center;gap:7px;color:#374151;white-space:nowrap;}
+  .legend-swatch{width:11px;height:11px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 1px rgba(0,0,0,0.06);}
+  #legend .credits{margin-top:6px;padding-top:5px;border-top:1px solid var(--line-soft);font-size:9.5px;color:#9aa1ab;text-align:center;}
+
+  /* ---------- Popup styling ---------- */
+  .pas-popup .leaflet-popup-content-wrapper{
+    border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.22);
+  }
+  .pas-popup .leaflet-popup-content{margin:12px 14px;font-family:'Inter',sans-serif;}
+  .popup-type{
+    display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.5px;color:#fff;border-radius:20px;padding:2px 9px;margin-bottom:6px;
+  }
+  .popup-name{font-family:'Poppins',sans-serif;font-weight:600;font-size:14px;margin:0 0 3px;color:var(--ink);}
+  .popup-row{font-size:12px;color:#4b5563;margin:1px 0;}
+  .popup-row b{color:#1f2937;}
+
+  @media print{
+    html,body{background:#fff;}
+    #app{width:100%;height:100vh;}
+    .leaflet-control-zoom{display:none !important;}
+    body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{size:landscape;margin:6mm;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map-stage">
+    <div id="col-left" class="label-col"></div>
+    <div id="map"></div>
+    <svg id="connectors"></svg>
+    <div id="col-right" class="label-col"></div>
+  </div>
+
+  <header id="poster-header">
+    <h1>Pôle d'Accompagnement à la Scolarité</h1>
+    <p>Secteur du Pays de Bray — Forges-les-Eaux et environs</p>
+  </header>
+
+  <div id="legend">
+    <h3>Types d'établissement</h3>
+    <div id="legend-items"></div>
+    <div class="credits">Fond de carte © OpenStreetMap · Données scolaires PAS</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function(){
+  "use strict";
+
+  // longitude médiane des établissements : fixe la frontière colonne gauche / colonne droite
+  const SPLIT_LONGITUDE = 1.5439;
+
+  // vue par défaut fixe (centre + zoom), au lieu d'un cadrage recalculé dynamiquement
+  const DEFAULT_VIEW = { center:[49.56919, 1.58833], zoom:11.28 };
+
+  /* ==========================================================
+     1. DONNÉES
+     ========================================================== */
+  const RAW_DATA = [
+    ["0760306V","Maternelle","Ecole maternelle le Mont-Huleu","ARGUEIL",49.5396,1.5147],
+    ["0761270T","Élémentaire","Ecole élémentaire","AVESNES EN BRAY",49.4608,1.6749],
+    ["0761416B","Maternelle","Ecole maternelle","BEAUSSAULT",49.6848,1.5630],
+    ["0760307W","Élémentaire","Ecole élémentaire","BEAUVOIR EN LYONS",49.5033,1.5204],
+    ["0761271U","Élémentaire","Ecole élémentaire","BEZANCOURT",49.4452,1.6165],
+    ["0761273W","Élémentaire","Ecole élémentaire","BREMONTIER MERVAL",49.5042,1.6111],
+    ["0761767H","Lycée","Lycée pro. agricole du Pays de Bray","BREMONTIER MERVAL",49.5050,1.6150],
+    ["0763086S","Élémentaire","Ecole élémentaire","COMPAINVILLE",49.6644,1.5491],
+    ["0762593F","Maternelle","Ecole maternelle Maurice Prévert","CROISY SUR ANDELLE",49.4632,1.3934],
+    ["0761274X","Primaire","Ecole primaire Roger Cressent","CUY ST FIACRE",49.5097,1.6961],
+    ["0761275Y","Élémentaire","Ecole élémentaire","DAMPIERRE EN BRAY",49.5375,1.6514],
+    ["0760446X","Élémentaire","Ecole élémentaire","ELBEUF SUR ANDELLE",49.4756,1.3986],
+    ["0762446W","Primaire","Ecole primaire Charles Trenet","FERRIERES EN BRAY",49.4827,1.7483],
+    ["0761695E","Collège","Collège Saint-Exupéry","FORGES LES EAUX",49.6166,1.5375],
+    ["0761297X","Maternelle","Ecole maternelle Marguerite Couturier","FORGES LES EAUX",49.6111,1.5422],
+    ["0761412X","Élémentaire","Ecole élémentaire Eugène Anne","FORGES LES EAUX",49.6120,1.5410],
+    ["0762020H","Primaire","Ecole primaire privée Sacré-Coeur","FORGES LES EAUX",49.6133,1.5444],
+    ["0762600N","Lycée","Lycée Delamare-Deboutteville","FORGES LES EAUX",49.6145,1.5360],
+    ["0762503H","Primaire","Ecole primaire les Petit Mots Passants","GAILLEFONTAINE",49.6542,1.6175],
+    ["0761422H","Élémentaire","Ecole élémentaire Lazare Hoche","GAILLEFONTAINE",49.6530,1.6180],
+    ["0760046M","Collège","Collège Rollon","GOURNAY EN BRAY",49.4800,1.7250],
+    ["0761734X","Collège","Collège Saint-Hildevert","GOURNAY EN BRAY",49.4805,1.7234],
+    ["0762021J","Primaire","Ecole primaire privée Saint Hildevert","GOURNAY EN BRAY",49.4810,1.7240],
+    ["0762325P","Maternelle","Ecole maternelle Pierre et Marie Curie","GOURNAY EN BRAY",49.4830,1.7210],
+    ["0763100G","Élémentaire","Ecole élémentaire Georges Brassens","GOURNAY EN BRAY",49.4845,1.7260],
+    ["0761427N","Maternelle","Ecole maternelle","HAUSSEZ",49.5694,1.6961],
+    ["0762177D","Collège","Collège la Hêtraie","LA FEUILLIE",49.4625,1.5150],
+    ["0762527J","Élémentaire","Ecole élémentaire les Prunus","LA FEUILLIE",49.4630,1.5160],
+    ["0762748Z","Maternelle","Ecole maternelle les petits feuillois","LA FEUILLIE",49.4635,1.5155],
+    ["0760314D","Élémentaire","Ecole élémentaire","LA HALLOTIERE",49.5186,1.4647],
+    ["0763133T","Maternelle","Ecole maternelle","MAUQUENCHY",49.5925,1.4883],
+    ["0761429R","Élémentaire","Ecole élémentaire","MESNIL MAUGER",49.6381,1.5208],
+    ["0761282F","Maternelle","Ecole maternelle","MONTROTY",49.4072,1.6669],
+    ["0760319J","Élémentaire","Ecole élémentaire","MORVILLE LE HERON",49.4667,1.4239],
+    ["0760449A","Élémentaire","Ecole élémentaire","MORVILLE LE HERON",49.4667,1.4239],
+    ["0762435J","Primaire","Ecole primaire Jean Moulin","NEUF MARCHE",49.4239,1.7161],
+    ["0761430S","Élémentaire","Ecole élémentaire","RONCHEROLLES EN BRAY",49.6267,1.4697],
+    ["0762540Y","Primaire","Ecole primaire Jean Jaurès","SERQUEUX",49.6319,1.5433],
+    ["0760322M","Primaire","Ecole primaire","SIGY EN BRAY",49.5447,1.4800],
+    ["0762465S","Primaire","Ecole primaire","SOMMERY",49.6264,1.4553]
+  ].map(function(r){
+    return {uai:r[0], type:r[1], name:r[2], commune:r[3], lat:r[4], lon:r[5]};
+  });
+
+  const TYPE_COLORS = {
+    "Maternelle":   "#e8734a",
+    "Élémentaire":  "#3a7bd5",
+    "Primaire":     "#1a9e88",
+    "Collège":      "#7b4fd6",
+    "Lycée":        "#c1274d"
+  };
+  const TYPE_ORDER = ["Maternelle","Élémentaire","Primaire","Collège","Lycée"];
+
+  // grandes villes de repère autour du périmètre (contexte géographique, hors données PAS)
+  const REFERENCE_CITIES = [
+    {name:"Neufchâtel-en-Bray",        lat:49.7333, lon:1.4333},
+    {name:"Londinières",               lat:49.8333, lon:1.4000},
+    {name:"Aumale",                    lat:49.7667, lon:1.7500},
+    {name:"Gisors",                    lat:49.2833, lon:1.7667},
+    {name:"Buchy",                     lat:49.5833, lon:1.2833},
+    {name:"Beauvais",                  lat:49.4295, lon:2.0807},
+    {name:"Rouen",                     lat:49.4431, lon:1.0993},
+    {name:"Roncherolles-sur-le-Vivier",lat:49.4956, lon:1.1928},
+    {name:"Quincampoix",               lat:49.5222, lon:1.1667}
+  ];
+
+  /* ==========================================================
+     2. ANTI-SUPERPOSITION DES PINS (établissements co-localisés)
+     ========================================================== */
+  (function spreadClusteredPins(){
+    const groups = {};
+    RAW_DATA.forEach(function(d){
+      const key = d.lat.toFixed(3)+"_"+d.lon.toFixed(3);
+      (groups[key] = groups[key] || []).push(d);
+    });
+    Object.values(groups).forEach(function(group){
+      if(group.length < 2) return;
+      const R = 0.0011 * (1 + group.length*0.06); // rayon de dispersion en degrés
+      group.forEach(function(d, i){
+        const angle = (2*Math.PI*i/group.length) - Math.PI/2;
+        d.dispLat = d.lat + Math.sin(angle)*R;
+        d.dispLon = d.lon + Math.cos(angle)*R*1.35; // compense la distorsion longitude
+      });
+    });
+    RAW_DATA.forEach(function(d){
+      if(d.dispLat === undefined){ d.dispLat = d.lat; d.dispLon = d.lon; }
+    });
+  })();
+
+  /* ==========================================================
+     3. CARTE LEAFLET
+     ========================================================== */
+  const map = L.map('map', {
+    zoomControl:false,
+    attributionControl:true,
+    zoomSnap:0, // zoom fractionnaire : permet un cadrage vertical exact au pixel près
+    minZoom:9,
+    maxZoom:16
+  });
+
+  // Esri "Light Gray Canvas" : fond neutre gratuit, sans clé API ni inscription
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'Fond de carte &copy; <a href="https://www.esri.com">Esri</a> — Esri, DeLorme, NAVTEQ',
+    maxNativeZoom:16,
+    maxZoom:16
+  }).addTo(map);
+
+  // vue par défaut fixe (voir DEFAULT_VIEW en haut du script)
+  map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+
+  // villes de repère : point discret + libellé non gras (simple contexte géographique)
+  (function addReferenceCities(){
+    REFERENCE_CITIES.forEach(function(c){
+      L.circleMarker([c.lat, c.lon], {
+        radius:3, weight:1, color:'#9aa1ab', fillColor:'#c8ccd1', fillOpacity:0.9, interactive:false
+      }).addTo(map);
+      L.tooltip({
+        permanent:true, direction:'top', offset:[0,-8],
+        className:'context-label', interactive:false
+      })
+      .setLatLng([c.lat, c.lon])
+      .setContent(c.name)
+      .addTo(map);
+    });
+  })();
+
+  /* ==========================================================
+     4. MARQUEURS PERSONNALISÉS
+     ========================================================== */
+  function makeIcon(type){
+    const color = TYPE_COLORS[type] || "#555";
+    const html = '<div class="pin-wrap"><div class="pin-shape" style="background:'+color+'"></div><div class="pin-dot"></div></div>';
+    return L.divIcon({
+      className:'', html:html,
+      iconSize:[26,34], iconAnchor:[13,32], popupAnchor:[0,-30]
+    });
+  }
+
+  const items = []; // {data, marker, side, labelEl, path, dotEl}
+
+  RAW_DATA.forEach(function(d){
+    const color = TYPE_COLORS[d.type] || "#555";
+    const marker = L.marker([d.dispLat, d.dispLon], {icon: makeIcon(d.type)}).addTo(map);
+    marker.bindPopup(
+      '<div class="pas-popup">'+
+      '<span class="popup-type" style="background:'+color+'">'+d.type+'</span>'+
+      '<p class="popup-name">'+d.name+'</p>'+
+      '<div class="popup-row"><b>Commune :</b> '+titleCase(d.commune)+'</div>'+
+      '<div class="popup-row"><b>Code UAI :</b> '+d.uai+'</div>'+
+      '</div>', {className:'pas-popup', maxWidth:260}
+    );
+    items.push({data:d, marker:marker});
+  });
+
+  function titleCase(s){
+    return s.toLowerCase().replace(/(^|\s|-|')([a-zàâäéèêëïîôöùûüç])/g, function(m,p1,p2){return p1+p2.toUpperCase();});
+  }
+
+  // libellés de villes en surimpression : plus lisibles (police plus grande et grasse)
+  // que ceux, ténus, du fond de carte, calculés au centroïde des établissements de chaque commune
+  (function addCityLabels(){
+    const communes = {};
+    RAW_DATA.forEach(function(d){
+      const c = communes[d.commune] || (communes[d.commune] = {sumLat:0, sumLon:0, count:0});
+      c.sumLat += d.lat; c.sumLon += d.lon; c.count++;
+    });
+    const communeArr = Object.keys(communes).map(function(name){
+      const c = communes[name];
+      return {name:name, lat:c.sumLat/c.count, lon:c.sumLon/c.count};
+    });
+
+    // communes trop proches : on alterne au-dessus / en dessous du pin pour éviter le chevauchement
+    const OVERLAP_THRESHOLD = 0.03; // ~3km à cette latitude
+    communeArr.forEach(function(c, i){
+      c.direction = 'top';
+      for(let j=0;j<i;j++){
+        const o = communeArr[j];
+        if(Math.hypot(c.lat-o.lat, c.lon-o.lon) < OVERLAP_THRESHOLD){
+          c.direction = (o.direction === 'top') ? 'bottom' : 'top';
+          break;
+        }
+      }
+    });
+
+    communeArr.forEach(function(c){
+      // priorité au placement au-dessus du pin ; en dessous, on rapproche le libellé (distance divisée par 4)
+      const offsetY = (c.direction === 'top') ? -30 : 5;
+      L.tooltip({
+        permanent:true, direction:c.direction, offset:[0, offsetY],
+        className:'city-label', interactive:false
+      })
+      .setLatLng([c.lat, c.lon])
+      .setContent(titleCase(c.name))
+      .addTo(map);
+    });
+  })();
+
+  /* ==========================================================
+     5. RÉPARTITION EN DEUX COLONNES (ouest / est)
+     ========================================================== */
+  const left = items.filter(function(it){return it.data.lon < SPLIT_LONGITUDE;});
+  const right = items.filter(function(it){return it.data.lon >= SPLIT_LONGITUDE;});
+
+  // tri nord -> sud pour préserver l'ordre entre pins et étiquettes (évite les croisements)
+  function byLatDesc(a,b){return b.data.lat - a.data.lat;}
+  left.sort(byLatDesc);
+  right.sort(byLatDesc);
+
+  const colLeftEl = document.getElementById('col-left');
+  const colRightEl = document.getElementById('col-right');
+
+  function renderColumn(list, container){
+    list.forEach(function(it){
+      const d = it.data;
+      const color = TYPE_COLORS[d.type] || "#555";
+      const el = document.createElement('div');
+      el.className = 'label-item';
+      el.innerHTML =
+        '<span class="label-dot" style="background:'+color+'"></span>'+
+        '<span class="label-text">'+
+          '<span class="label-name">'+d.name+'</span>'+
+          '<span class="label-commune">('+titleCase(d.commune)+')</span>'+
+        '</span>';
+      el.addEventListener('click', function(){
+        it.marker.openPopup();
+      });
+      el.addEventListener('mouseenter', function(){ setActive(it, true); });
+      el.addEventListener('mouseleave', function(){ setActive(it, false); });
+      container.appendChild(el);
+      it.labelEl = el;
+      it.side = (container === colLeftEl) ? 'left' : 'right';
+    });
+  }
+  renderColumn(left, colLeftEl);
+  renderColumn(right, colRightEl);
+
+  // agrandit la police des étiquettes pour occuper toute la hauteur disponible de la colonne
+  function sizeColumn(list, container){
+    if(!list.length) return;
+    const rowHeight = container.clientHeight / list.length;
+    const fontSize = clamp(rowHeight * 0.30, 10.5, 19);
+    container.style.fontSize = fontSize + 'px';
+  }
+  function sizeColumns(){
+    sizeColumn(left, colLeftEl);
+    sizeColumn(right, colRightEl);
+  }
+  sizeColumns();
+
+  function setActive(it, on){
+    it.labelEl.classList.toggle('active', on);
+    const markerEl = it.marker.getElement();
+    if(markerEl){
+      const wrap = markerEl.querySelector('.pin-wrap');
+      if(wrap) wrap.classList.toggle('active', on);
+    }
+    if(it.path) it.path.setAttribute('stroke-opacity', on ? '0.95' : '0.55');
+    if(it.path) it.path.setAttribute('stroke-width', on ? '2.6' : '1.6');
+  }
+
+  items.forEach(function(it){
+    it.marker.on('mouseover', function(){ setActive(it, true); });
+    it.marker.on('mouseout', function(){ setActive(it, false); });
+  });
+
+    /* ==========================================================
+     6. LÉGENDE
+     ========================================================== */
+  const legendItemsEl = document.getElementById('legend-items');
+  TYPE_ORDER.forEach(function(type){
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = '<span class="legend-swatch" style="background:'+TYPE_COLORS[type]+'"></span><span>'+type+'</span>';
+    legendItemsEl.appendChild(row);
+  });
+
+  /* ==========================================================
+     7. LIGNES DE RACCORDEMENT (SVG, courbes de Bézier)
+     ========================================================== */
+  const svg = document.getElementById('connectors');
+  const NS = 'http://www.w3.org/2000/svg';
+
+  items.forEach(function(it){
+    const path = document.createElementNS(NS, 'path');
+    const color = TYPE_COLORS[it.data.type] || "#555";
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-opacity', '0.55');
+    path.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(path);
+    it.path = path;
+  });
+
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+  function updateConnectors(){
+    const stageRect = document.getElementById('map-stage').getBoundingClientRect();
+    svg.setAttribute('width', stageRect.width);
+    svg.setAttribute('height', stageRect.height);
+    svg.setAttribute('viewBox', '0 0 '+stageRect.width+' '+stageRect.height);
+
+    const mapPoint = map.getContainer().getBoundingClientRect();
+
+    items.forEach(function(it){
+      const p = map.latLngToContainerPoint(it.marker.getLatLng());
+      const pinX = mapPoint.left + p.x - stageRect.left;
+      const pinY = mapPoint.top + p.y - stageRect.top;
+
+      const lr = it.labelEl.getBoundingClientRect();
+      const anchorX = (it.side === 'left') ? (lr.right - stageRect.left) : (lr.left - stageRect.left);
+      const anchorY = (lr.top + lr.height/2) - stageRect.top;
+
+      const dx = clamp(Math.abs(pinX - anchorX) * 0.5, 40, 170);
+      const sign = (pinX - anchorX) >= 0 ? 1 : -1;
+      const c1x = anchorX + sign*dx, c1y = anchorY;
+      const c2x = pinX - sign*dx, c2y = pinY;
+
+      it.path.setAttribute('d',
+        'M '+anchorX+' '+anchorY+
+        ' C '+c1x+' '+c1y+', '+c2x+' '+c2y+', '+pinX+' '+pinY
+      );
+    });
+  }
+
+  let rafPending = false;
+  function scheduleUpdate(){
+    if(rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(function(){ rafPending = false; updateConnectors(); });
+  }
+
+  let resizeTimer = null;
+  function onWindowResize(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){
+      map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+      sizeColumns();
+      scheduleUpdate();
+    }, 120);
+  }
+
+  map.on('move zoom viewreset moveend zoomend resize', scheduleUpdate);
+  map.on('zoomend moveend', function(){
+    const c = map.getCenter();
+    console.log('Zoom:', map.getZoom().toFixed(2), '| Centre:', c.lat.toFixed(5), c.lng.toFixed(5));
+  });
+  window.addEventListener('resize', onWindowResize);
+  map.whenReady(function(){ setTimeout(function(){ sizeColumns(); scheduleUpdate(); }, 60); });
+  setTimeout(function(){ sizeColumns(); scheduleUpdate(); }, 300); // fonts / layout settle
+
+})();
+</script>
+</body>
+</html>
