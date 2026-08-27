@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<script>
+<script id="mobile-redirect">
   // bascule vers la version mobile uniquement sur téléphone (pas tablette) : redirection avant tout chargement
   (function(){
     var ua = navigator.userAgent;
@@ -168,7 +168,7 @@
   /* ---------- Header (poster title) : centré sur le tiers droit de l'écran ---------- */
   #poster-header{
     position:absolute;top:10px;left:50%;transform:translateX(-50%);
-    z-index:700;text-align:center;
+    z-index:700;
     background:rgba(255,255,255,0.88);
     border:1px solid var(--line-soft);
     border-radius:14px;
@@ -178,6 +178,7 @@
     max-width:clamp(220px, 42vw, 480px);
     width:max-content;
   }
+  #poster-header-text{text-align:center;}
   #poster-header h1{
     margin:0;font-family:'Poppins',sans-serif;font-weight:700;font-size:clamp(14px, 1.8vw, 21px);
     letter-spacing:.3px;color:var(--ink);
@@ -185,6 +186,46 @@
   #poster-header p{
     margin:4px 0 0;font-size:clamp(9.5px, 1.1vw, 12.5px);font-weight:500;color:#5b6472;letter-spacing:.2px;
   }
+  /* boutons hors du bloc-titre (position:absolute) : ils ne font pas partie de son contenu
+     et ne peuvent donc jamais influencer le centrage du titre, qu'ils soient visibles ou non. */
+  #menu-toggle-btn{
+    position:absolute;bottom:6px;right:8px;
+    width:26px;height:26px;border:none;border-radius:50%;
+    background:rgba(31,41,55,0.07);color:#5b6472;
+    font-size:16px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    opacity:0;visibility:hidden;
+    transition:opacity .15s ease, background .15s ease, visibility 0s linear .15s;
+  }
+  /* le survol/focus de l'en-tête révèle l'icône ; .menu-open la maintient visible tant que le menu est ouvert */
+  #poster-header:hover #menu-toggle-btn,
+  #poster-header:focus-within #menu-toggle-btn,
+  #poster-header.menu-open #menu-toggle-btn{
+    opacity:1;visibility:visible;transition:opacity .15s ease, background .15s ease, visibility 0s linear 0s;
+  }
+  #menu-toggle-btn:hover{background:rgba(31,41,55,0.14);}
+
+  #header-menu{
+    position:absolute;top:100%;right:8px;margin-top:8px;
+    background:#fff;border:1px solid var(--line-soft);border-radius:12px;
+    box-shadow:0 10px 28px rgba(0,0,0,0.18);
+    padding:6px;display:flex;flex-direction:column;gap:2px;min-width:170px;
+    opacity:0;visibility:hidden;transform:translateY(-6px);
+    transition:opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+    z-index:800;
+  }
+  #poster-header.menu-open #header-menu{
+    opacity:1;visibility:visible;transform:translateY(0);
+    transition:opacity .15s ease, transform .15s ease, visibility 0s linear 0s;
+  }
+  .menu-item{
+    display:flex;align-items:center;gap:9px;
+    padding:8px 12px;border:none;border-radius:8px;background:transparent;
+    font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:var(--ink);
+    cursor:pointer;text-align:left;white-space:nowrap;
+  }
+  .menu-item:hover{background:#f3f4f6;}
+  .menu-icon{font-size:15px;line-height:1;}
   #poster-header .badge{
     display:inline-block;margin-top:6px;font-size:10px;font-weight:600;letter-spacing:.6px;
     text-transform:uppercase;color:#1a9e88;background:#eafaf6;border:1px solid #bfe9de;
@@ -246,10 +287,14 @@
 
   @media print{
     html,body{background:#fff;}
-    #app{width:100%;height:100vh;}
+    /* #app reste position:fixed;inset:0 (règle générale) : il épouse déjà exactement la zone imprimable
+       définie par @page ci-dessous, sans recalcul supplémentaire nécessaire */
     .leaflet-control-zoom{display:none !important;}
+    #menu-toggle-btn, #header-menu{display:none !important;}
+    /* le défilement (.label-col) n'existe pas à l'impression : on rend tout visible pour ne rien couper */
+    .label-col{overflow:visible !important;}
     body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    @page{size:landscape;margin:6mm;}
+    @page{size:A4 landscape;margin:6mm;}
   }
 </style>
 </head>
@@ -263,8 +308,16 @@
   </div>
 
   <header id="poster-header">
-    <h1>Pôle d'Accompagnement à la Scolarité</h1>
-    <p>Secteur du Pays de Bray — Forges-les-Eaux et environs</p>
+    <div id="poster-header-text">
+      <h1>Pôle d'Accompagnement à la Scolarité</h1>
+      <p>Secteur du Pays de Bray — Forges-les-Eaux et environs</p>
+    </div>
+    <button id="menu-toggle-btn" type="button" title="Options" aria-label="Ouvrir le menu" aria-haspopup="true" aria-expanded="false">⋮</button>
+    <div id="header-menu" role="menu">
+      <button id="reset-btn" type="button" class="menu-item" role="menuitem"><span class="menu-icon" aria-hidden="true">🎯</span>Centrer</button>
+      <button id="print-btn" type="button" class="menu-item" role="menuitem"><span class="menu-icon" aria-hidden="true">🖨️</span>Imprimer</button>
+      <button id="print-hd-btn" type="button" class="menu-item" role="menuitem"><span class="menu-icon" aria-hidden="true">🖼️</span>Impression HD (fixe)</button>
+    </div>
   </header>
 
   <div id="legend">
@@ -288,8 +341,9 @@
   const DEFAULT_VIEW = { center:[49.56919, 1.58833], zoom:11.28 };
 
   // un zoom Leaflet correspond à un doublement de résolution : on compense la largeur d'écran en log2
-  function zoomForCurrentWidth(){
-    return DEFAULT_VIEW.zoom + Math.log2(window.innerWidth / REFERENCE_WIDTH);
+  // (largeur passable explicitement pour l'impression, dont le conteneur n'a pas la largeur de la fenêtre)
+  function zoomForCurrentWidth(width){
+    return DEFAULT_VIEW.zoom + Math.log2((width || window.innerWidth) / REFERENCE_WIDTH);
   }
 
   /* ==========================================================
@@ -410,8 +464,10 @@
     maxZoom:16
   }).addTo(map);
 
-  // vue par défaut fixe (voir DEFAULT_VIEW en haut du script), zoom adapté à la largeur d'écran actuelle
-  map.setView(DEFAULT_VIEW.center, zoomForCurrentWidth());
+  // vue par défaut fixe (voir DEFAULT_VIEW en haut du script), zoom adapté à la largeur d'écran actuelle ;
+  // window.__PRINT_VIEW (injecté uniquement dans la copie imprimée) impose le centrage/zoom écran d'origine
+  const printView = window.__PRINT_VIEW;
+  map.setView(printView ? printView.center : DEFAULT_VIEW.center, printView ? printView.zoom : zoomForCurrentWidth());
 
   // villes de repère : point discret + libellé non gras (simple contexte géographique)
   (function addReferenceCities(){
@@ -656,6 +712,174 @@
   window.addEventListener('resize', onWindowResize);
   map.whenReady(function(){ setTimeout(function(){ sizeColumns(); scheduleUpdate(); }, 60); });
   setTimeout(function(){ sizeColumns(); scheduleUpdate(); }, 300); // fonts / layout settle
+
+  /* ==========================================================
+     8. IMPRESSION : instance dédiée reconstruite aux proportions A4 (pas de clone/scale de l'écran 16/9)
+     ========================================================== */
+  // recharge la page elle-même dans un iframe aux dimensions A4 paysage réelles : la mise en page responsive
+  // (colonnes clamp(), carte, légende) se recalcule alors nativement pour ce format, sans transform ni
+  // distorsion ni rognage — exactement comme le fait déjà la page pour n'importe quelle taille de fenêtre.
+  const A4_LANDSCAPE_PX = { width: 1123, height: 794 }; // A4 paysage à 96 CSS px/pouce
+  const PRINT_MARGIN_PX = 23; // ~6mm, cohérent avec la marge @page ci-dessous
+
+  function printCurrentView(){
+    const center = map.getCenter();
+    const screenWidth = map.getContainer().getBoundingClientRect().width;
+    const printWidth = A4_LANDSCAPE_PX.width - PRINT_MARGIN_PX * 2;
+    const printHeight = A4_LANDSCAPE_PX.height - PRINT_MARGIN_PX * 2;
+    // conserve la même étendue géographique que celle affichée à l'écran malgré le changement de largeur
+    // de conteneur (même logique que zoomForCurrentWidth, appliquée ici au zoom réellement choisi par l'utilisateur)
+    const printZoom = map.getZoom() + Math.log2(printWidth / screenWidth);
+
+    // clone hors-ligne du document (évite fetch(), bloqué par le CORS des navigateurs en file://) : les
+    // conteneurs générés dynamiquement sont vidés pour que le script de la copie les reconstruise sans doublon
+    const docClone = document.documentElement.cloneNode(true);
+    ['col-left', 'col-right', 'legend-items', 'map', 'connectors'].forEach(function(id){
+      const el = docClone.querySelector('#'+id);
+      if(el) el.innerHTML = '';
+    });
+    const clonedHeader = docClone.querySelector('#poster-header');
+    if(clonedHeader) clonedHeader.classList.remove('menu-open');
+    // la copie imprimée n'a pas à se rediriger vers la version mobile même si le navigateur est un téléphone.
+    // ciblage par id obligatoire : un filtrage sur le contenu des scripts supprimerait aussi ce script-ci,
+    // qui mentionne forcément le motif de redirection — la copie se retrouvait alors sans carte ni étiquettes.
+    const clonedRedirect = docClone.querySelector('#mobile-redirect');
+    if(clonedRedirect) clonedRedirect.remove();
+    // le contrôle d'intégrité (integrity/crossorigin) peut échouer silencieusement dans ce contexte de document
+    // généré dynamiquement (origine "null") et bloquer tout le script de la copie sans message visible
+    docClone.querySelectorAll('link[integrity], script[integrity]').forEach(function(node){
+      node.removeAttribute('integrity');
+      node.removeAttribute('crossorigin');
+    });
+
+    // <base> explicite : sans lui, l'URI de base d'un document about:blank écrit dynamiquement (via doc.write)
+    // n'est pas fiable selon les navigateurs, ce qui casse toute ressource référencée en chemin relatif
+    const baseTag = document.createElement('base');
+    baseTag.href = location.href;
+    const overrideScript = document.createElement('script');
+    overrideScript.textContent = 'window.__PRINT_VIEW={center:['+center.lat+','+center.lng+'],zoom:'+printZoom+'};';
+    const clonedHead = docClone.querySelector('head');
+    clonedHead.insertBefore(overrideScript, clonedHead.firstChild);
+    clonedHead.insertBefore(baseTag, clonedHead.firstChild);
+
+    // conteneur visible à l'écran (opacity:0, hors interaction) plutôt que rejeté hors-champ : certains
+    // navigateurs limitent le rendu / requestAnimationFrame (utilisé par Leaflet et les connecteurs) des
+    // iframes considérées hors-écran, ce qui empêchait la carte de se dessiner dans la copie imprimée
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText =
+      'position:fixed;top:0;left:0;opacity:0;pointer-events:none;z-index:-1;border:0;'+
+      'width:'+printWidth+'px;height:'+printHeight+'px;';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    // remonte les erreurs du document imprimé dans la console de la page principale (sinon invisibles, l'iframe
+    // n'a pas de devtools accessibles directement) — utile si le script de la copie échoue silencieusement
+    iframe.contentWindow.onerror = function(message, source, lineno){
+      console.error('Impression (copie A4) :', message, source, lineno);
+    };
+    doc.write('<!DOCTYPE html>' + docClone.outerHTML);
+    doc.close();
+
+    // attend que la carte de la copie soit réellement peinte (tuiles téléchargées) avant d'imprimer,
+    // plutôt qu'un délai fixe qui suffit avec un cache chaud mais produit une carte vide au premier appel
+    const READY_MIN_DELAY = 700, READY_MAX_DELAY = 8000;
+    const startedAt = Date.now();
+    (function waitForReady(){
+      const elapsed = Date.now() - startedAt;
+      const tiles = doc.querySelectorAll('img.leaflet-tile');
+      const painted = tiles.length > 0 &&
+        Array.prototype.every.call(tiles, function(t){ return t.complete && t.naturalWidth > 0; });
+      if((painted && elapsed >= READY_MIN_DELAY) || elapsed >= READY_MAX_DELAY){
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(function(){ iframe.remove(); }, 1000);
+        return;
+      }
+      setTimeout(waitForReady, 150);
+    })();
+  }
+
+  /* ==========================================================
+     8bis. IMPRESSION HD (FIXE) : image pré-rendue, sans reconstruction dynamique
+     ========================================================== */
+  const HD_IMAGE_FILE = 'Carte-3441x1902.png';
+
+  function printHighResImage(){
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(
+      '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+      '<base href="'+location.href+'">'+ // sans cela, le chemin relatif de l'image ne se résout pas dans ce document
+      '<title>Impression HD — Carte PAS</title>'+
+      '<style>'+
+        '@page{size:A4 landscape;margin:6mm;}'+
+        'html,body{margin:0;padding:0;height:100%;}'+
+        'body{display:flex;align-items:center;justify-content:center;}'+
+        'img{max-width:100%;max-height:100%;}'+
+      '</style></head><body><img id="print-img" src="'+HD_IMAGE_FILE+'" alt="Carte du Pôle d\'Accompagnement à la Scolarité"></body></html>'
+    );
+    doc.close();
+
+    function launchPrint(){
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(function(){ iframe.remove(); }, 1000);
+    }
+    // imprimer une image absente ne produirait qu'un texte alternatif : mieux vaut prévenir et ne rien imprimer
+    function onImageError(){
+      iframe.remove();
+      window.alert("Impression HD indisponible : l'image « "+HD_IMAGE_FILE+" » est introuvable à côté de cette page.");
+    }
+    const img = doc.getElementById('print-img');
+    if(img.complete && img.naturalWidth > 0){ launchPrint(); }
+    else if(img.complete){ onImageError(); }
+    else { img.addEventListener('load', launchPrint); img.addEventListener('error', onImageError); }
+  }
+
+  /* ==========================================================
+     9. MENU "⋮" DE L'EN-TÊTE (Centrer / Imprimer)
+     ========================================================== */
+  const posterHeader = document.getElementById('poster-header');
+  const menuToggleBtn = document.getElementById('menu-toggle-btn');
+
+  function closeHeaderMenu(){
+    posterHeader.classList.remove('menu-open');
+    menuToggleBtn.setAttribute('aria-expanded', 'false');
+  }
+  function toggleHeaderMenu(){
+    const open = posterHeader.classList.toggle('menu-open');
+    menuToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  menuToggleBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    toggleHeaderMenu();
+  });
+  document.addEventListener('click', function(e){
+    if(!posterHeader.contains(e.target)) closeHeaderMenu();
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape') closeHeaderMenu();
+  });
+
+  document.getElementById('print-btn').addEventListener('click', function(){
+    closeHeaderMenu();
+    printCurrentView();
+  });
+
+  document.getElementById('print-hd-btn').addEventListener('click', function(){
+    closeHeaderMenu();
+    printHighResImage();
+  });
+
+  document.getElementById('reset-btn').addEventListener('click', function(){
+    closeHeaderMenu();
+    map.setView(DEFAULT_VIEW.center, zoomForCurrentWidth());
+  });
 
 })();
 </script>

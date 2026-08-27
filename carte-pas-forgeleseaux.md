@@ -73,3 +73,34 @@ utilise un fond de carte  gratuit sans watermark comme openstreetmap ou mieux, p
 centre la légende horizontalement et place là en bas de l'ecran afin qu'elle ne chevauche pas les etiquettes.
 
 Adapte la taille de la font des etiquettes afin que les etiquettes occupe tout l'expace vertical de l'ecran
+
+---
+
+## Évolutions demandées en cours de session (priment sur les règles ci-dessus en cas de conflit)
+
+### 4. Adaptabilité multi-écrans (desktop / tablette)
+- Tous les composants (colonnes d'étiquettes, en-tête, légende, carte) s'adaptent aux dimensions réelles de l'écran, y compris sur tablette plus petite que l'écran de développement.
+- Les colonnes d'étiquettes utilisent des largeurs fluides (`clamp()`, pas de valeur fixe) et deviennent défilables (`overflow-y:auto`) si le nombre d'étiquettes dépasse la hauteur disponible, pour ne jamais laisser d'étiquette invisible.
+- L'en-tête et la légende utilisent des tailles/`max-width` en `clamp()` basées sur `vw` pour rester lisibles à toute résolution.
+- Le conteneur principal (`#app`) utilise `position:fixed;inset:0` (et non `width:100vw;height:100vh`) pour coller aux bords réellement visibles de l'écran — `100vh` peut être plus grand que la zone visible sur tablette à cause de la barre du navigateur, ce qui masquait la légende.
+- Le zoom par défaut de la carte s'adapte à la largeur d'écran réelle (calibré pour une résolution de référence de 1980px de large), recalculé au chargement et à chaque redimensionnement.
+
+### 5. Popups enrichies et priorité d'affichage
+- Chaque popup affiche : type d'établissement, nom, **adresse complète** (voie, code postal, commune), **téléphone** (lien `tel:` cliquable), et code UAI.
+- Les popups apparaissent toujours au-dessus des autres éléments graphiques : les fils de raccordement SVG se masquent automatiquement tant qu'une popup est ouverte (le pane popup de Leaflet ne peut pas être placé au-dessus d'un élément frère externe via `z-index` seul).
+
+### 6. Version mobile dédiée (téléphone, hors tablette)
+- Un second fichier HTML autonome (`Carte-PAS-Forges_les_eaux-mobile.html`) est dédié aux téléphones : écran liste (titre + liste des établissements), puis écran détail au clic (moitié écran = informations façon popup incluant adresse/téléphone, moitié écran = carte routière détaillée centrée sur le seul établissement sélectionné).
+- Taper sur la carte (ou un bouton dédié) ouvre l'application de navigation par défaut (Apple Plans sur iOS, Google Maps ailleurs) avec l'adresse de l'établissement en destination.
+- En orientation paysage, les informations et la carte se répartissent horizontalement plutôt que verticalement.
+- Le fichier desktop détecte automatiquement s'il s'agit d'un téléphone (et non d'une tablette) et redirige vers cette version mobile ; le paramètre `?desktop=1` force la version complète depuis un téléphone.
+
+### 7. Menu d'en-tête et impression
+- Un menu discret (icône « ⋮ »), révélé uniquement au survol (ou focus clavier) du bloc d'en-tête, regroupe les actions suivantes sans jamais influencer le centrage du titre (boutons en `position:absolute`, hors du flux de contenu de l'en-tête) :
+  - **Centrer** : réinitialise le centrage et le zoom de la carte à la vue par défaut.
+  - **Imprimer** : impression au format A4 paysage. La copie imprimée est **reconstruite nativement** à ces proportions dans un document dédié (même page rechargée dans un iframe aux dimensions A4), et non une simple capture/mise à l'échelle de l'écran — afin d'éviter toute distorsion géographique et tout désalignement pins/fils/carte. Elle conserve la même étendue géographique que celle affichée à l'écran au moment du clic (centre identique, zoom ajusté du ratio de largeur écran → page).
+  - **Impression HD (fixe)** : impression directe d'une image haute résolution pré-rendue (`Carte-3441x1902.png`) en A4 paysage, indépendante du centrage/zoom courant — solution de secours simple et fiable. Si l'image est introuvable, l'utilisateur est averti plutôt que d'imprimer une page ne contenant que le texte alternatif.
+- Contrainte non négociable : une carte géographique ne doit **jamais** être déformée (interdiction de tout étirement non uniforme X/Y) ; une marge blanche résiduelle est préférable à une distorsion des tracés/cercles ou à un rognage des étiquettes en bord d'écran.
+- Les documents d'impression générés dynamiquement doivent inclure une balise `<base href="...">` (résolution fiable des ressources relatives, ex. l'image HD) et éviter tout positionnement hors-écran de l'iframe (throttling du rendu/`requestAnimationFrame` par le navigateur).
+- Le script de redirection mobile est identifié par son `id` (`#mobile-redirect`) et retiré par cet identifiant lors de la construction de la copie imprimée : un filtrage sur le contenu textuel des scripts supprimerait aussi le script principal, qui mentionne nécessairement le motif de redirection.
+- L'impression n'est déclenchée qu'une fois la carte de la copie réellement peinte (toutes les tuiles chargées), avec un délai plancher et un délai plafond, plutôt qu'après un délai fixe.
