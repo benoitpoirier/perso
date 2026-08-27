@@ -39,7 +39,10 @@
   html,body{margin:0;padding:0;height:100%;width:100%;background:var(--paper);}
   body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);overflow:hidden;}
 
-  #app{position:relative;width:100vw;height:100vh;}
+  /* position:fixed + inset:0 colle aux bords réellement visibles de l'écran (contrairement à 100vh,
+     souvent plus grand que la zone visible sur tablette à cause de la barre du navigateur) : la légende,
+     ancrée en bas, restait sinon hors champ sur certains écrans plus petits. */
+  #app{position:fixed;inset:0;}
 
   /* ---------- Map stage ---------- */
   #map-stage{position:absolute;inset:0;}
@@ -280,7 +283,14 @@
   const SPLIT_LONGITUDE = 1.5439;
 
   // vue par défaut fixe (centre + zoom), au lieu d'un cadrage recalculé dynamiquement
+  // le zoom de référence est calibré pour un écran de 1980px de large ; on l'ajuste ensuite à la largeur réelle
+  const REFERENCE_WIDTH = 1980;
   const DEFAULT_VIEW = { center:[49.56919, 1.58833], zoom:11.28 };
+
+  // un zoom Leaflet correspond à un doublement de résolution : on compense la largeur d'écran en log2
+  function zoomForCurrentWidth(){
+    return DEFAULT_VIEW.zoom + Math.log2(window.innerWidth / REFERENCE_WIDTH);
+  }
 
   /* ==========================================================
      1. DONNÉES
@@ -400,8 +410,8 @@
     maxZoom:16
   }).addTo(map);
 
-  // vue par défaut fixe (voir DEFAULT_VIEW en haut du script)
-  map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+  // vue par défaut fixe (voir DEFAULT_VIEW en haut du script), zoom adapté à la largeur d'écran actuelle
+  map.setView(DEFAULT_VIEW.center, zoomForCurrentWidth());
 
   // villes de repère : point discret + libellé non gras (simple contexte géographique)
   (function addReferenceCities(){
@@ -630,7 +640,7 @@
   function onWindowResize(){
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function(){
-      map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+      map.setView(DEFAULT_VIEW.center, zoomForCurrentWidth());
       sizeColumns();
       scheduleUpdate();
     }, 120);
