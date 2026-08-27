@@ -65,6 +65,9 @@
   }
   #back-btn::before{content:'‹';font-size:20px;line-height:1;color:#3a7bd5;}
 
+  /* portrait : infos au-dessus de la carte ; paysage (media query plus bas) : côte à côte */
+  #detail-body{flex:1;min-height:0;display:flex;flex-direction:column;}
+
   #detail-info{
     flex:0 0 50%;overflow-y:auto;-webkit-overflow-scrolling:touch;
     padding:16px 18px;background:#fff;border-bottom:1px solid var(--line-soft);
@@ -110,6 +113,13 @@
     font-size:11px;color:#9aa1ab;background:#fff;border-top:1px solid var(--line-soft);
   }
   #footer-link a{color:#5b6472;}
+
+  /* ---------- Paysage : infos et carte réparties horizontalement ---------- */
+  @media (orientation:landscape){
+    #detail-body{flex-direction:row;}
+    #detail-info{flex:0 0 42%;max-width:340px;border-bottom:none;border-right:1px solid var(--line-soft);}
+    #detail-map-wrap{flex:1;}
+  }
 </style>
 </head>
 <body>
@@ -125,10 +135,12 @@
 
   <section id="screen-detail">
     <button id="back-btn" type="button">Retour à la liste</button>
-    <div id="detail-info"></div>
-    <div id="detail-map-wrap">
-      <div id="detail-map"></div>
-      <div id="nav-btn">Itinéraire</div>
+    <div id="detail-body">
+      <div id="detail-info"></div>
+      <div id="detail-map-wrap">
+        <div id="detail-map"></div>
+        <div id="nav-btn">Itinéraire</div>
+      </div>
     </div>
   </section>
 
@@ -309,6 +321,15 @@
   navBtn.addEventListener('click', function(){ openNavigation(currentSchool); });
   window.addEventListener('popstate', function(){
     if(!/^#etablissement-/.test(location.hash)) closeDetail();
+  });
+
+  // rotation de l'appareil : le conteneur change de taille/forme (colonne <-> ligne), la carte doit se recaler
+  window.addEventListener('resize', function(){
+    if(!detailMap || !screenDetail.classList.contains('active')) return;
+    setTimeout(function(){
+      detailMap.invalidateSize();
+      if(currentSchool) detailMap.setView([currentSchool.lat, currentSchool.lon], 16);
+    }, 60);
   });
 
 })();
