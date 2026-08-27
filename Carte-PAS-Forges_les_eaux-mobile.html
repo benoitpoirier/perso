@@ -311,7 +311,22 @@
     const address = d.street+', '+d.cp+' '+titleCase(d.commune)+', France';
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     if(isIOS){
-      window.location.href = 'https://maps.apple.com/?daddr='+encodeURIComponent(address)+'&ll='+d.lat+','+d.lon;
+      const wazeUrl = 'waze://ul?ll='+d.lat+','+d.lon+'&navigate=yes';
+      const appleUrl = 'https://maps.apple.com/?daddr='+encodeURIComponent(address)+'&ll='+d.lat+','+d.lon;
+      // si Waze n'est pas installé, iOS ne quitte jamais la page : on bascule vers Apple Plans après un court délai
+      let fellBack = false;
+      const fallbackTimer = setTimeout(function(){
+        fellBack = true;
+        window.location.href = appleUrl;
+      }, 1200);
+      const cancelFallback = function(){
+        if(document.hidden){
+          clearTimeout(fallbackTimer);
+          document.removeEventListener('visibilitychange', cancelFallback);
+        }
+      };
+      document.addEventListener('visibilitychange', cancelFallback);
+      window.location.href = wazeUrl;
     } else {
       window.location.href = 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(address);
     }
