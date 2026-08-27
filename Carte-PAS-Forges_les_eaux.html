@@ -2,6 +2,20 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<script>
+  // bascule vers la version mobile uniquement sur téléphone (pas tablette) : redirection avant tout chargement
+  (function(){
+    var ua = navigator.userAgent;
+    var isTablet = /iPad/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua)) ||
+                   (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1); // iPadOS 13+ se déclare "Macintosh"
+    var isMobileUA = /Mobi|Android|iPhone|iPod|Windows Phone|BlackBerry/.test(ua);
+    var isPhoneSize = Math.min(window.screen.width, window.screen.height) <= 480;
+    var forcedDesktop = /(?:\?|&)desktop=1(?:&|$)/.test(location.search);
+    if (isMobileUA && !isTablet && isPhoneSize && !forcedDesktop) {
+      location.replace('Carte-PAS-Forges_les_eaux-mobile.html');
+    }
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Carte du Pôle d'Accompagnement à la Scolarité — Pays de Bray</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -30,7 +44,10 @@
   /* ---------- Map stage ---------- */
   #map-stage{position:absolute;inset:0;}
   #map{position:absolute;inset:0;background:#eef1ee;}
-  #connectors{position:absolute;inset:0;width:100%;height:100%;z-index:400;pointer-events:none;}
+  #connectors{position:absolute;inset:0;width:100%;height:100%;z-index:400;pointer-events:none;transition:opacity .12s ease;}
+  /* le pane popup de Leaflet est piégé dans le contexte d'empilement transformé de la carte : impossible de le faire
+     passer au-dessus de ce SVG (sibling) via z-index. On masque donc les fils tant qu'une popup est ouverte. */
+  #connectors.connectors-hidden{opacity:0;}
 
   .leaflet-container{font-family:'Inter',sans-serif;}
   .leaflet-control-attribution{
@@ -206,6 +223,8 @@
   .popup-name{font-family:'Poppins',sans-serif;font-weight:600;font-size:14px;margin:0 0 3px;color:var(--ink);}
   .popup-row{font-size:12px;color:#4b5563;margin:1px 0;}
   .popup-row b{color:#1f2937;}
+  .popup-row a{color:#3a7bd5;text-decoration:none;}
+  .popup-row a:hover{text-decoration:underline;}
 
   /* ---------- Petits écrans (tablette / mobile) : colonnes plus étroites, panneaux plus compacts ---------- */
   @media (max-width:900px){
@@ -266,50 +285,57 @@
   /* ==========================================================
      1. DONNÉES
      ========================================================== */
+  // colonnes : uai, type, nom, commune, lat, lon, adresse (voie), code postal, téléphone
+  // source : annuaire de l'éducation (data.education.gouv.fr), dataset fr-en-annuaire-education
   const RAW_DATA = [
-    ["0760306V","Maternelle","Ecole maternelle le Mont-Huleu","ARGUEIL",49.5396,1.5147],
-    ["0761270T","Élémentaire","Ecole élémentaire","AVESNES EN BRAY",49.4608,1.6749],
-    ["0761416B","Maternelle","Ecole maternelle","BEAUSSAULT",49.6848,1.5630],
-    ["0760307W","Élémentaire","Ecole élémentaire","BEAUVOIR EN LYONS",49.5033,1.5204],
-    ["0761271U","Élémentaire","Ecole élémentaire","BEZANCOURT",49.4452,1.6165],
-    ["0761273W","Élémentaire","Ecole élémentaire","BREMONTIER MERVAL",49.5042,1.6111],
-    ["0761767H","Lycée","Lycée pro. agricole du Pays de Bray","BREMONTIER MERVAL",49.5050,1.6150],
-    ["0763086S","Élémentaire","Ecole élémentaire","COMPAINVILLE",49.6644,1.5491],
-    ["0762593F","Maternelle","Ecole maternelle Maurice Prévert","CROISY SUR ANDELLE",49.4632,1.3934],
-    ["0761274X","Primaire","Ecole primaire Roger Cressent","CUY ST FIACRE",49.5097,1.6961],
-    ["0761275Y","Élémentaire","Ecole élémentaire","DAMPIERRE EN BRAY",49.5375,1.6514],
-    ["0760446X","Élémentaire","Ecole élémentaire","ELBEUF SUR ANDELLE",49.4756,1.3986],
-    ["0762446W","Primaire","Ecole primaire Charles Trenet","FERRIERES EN BRAY",49.4827,1.7483],
-    ["0761695E","Collège","Collège Saint-Exupéry","FORGES LES EAUX",49.6166,1.5375],
-    ["0761297X","Maternelle","Ecole maternelle Marguerite Couturier","FORGES LES EAUX",49.6111,1.5422],
-    ["0761412X","Élémentaire","Ecole élémentaire Eugène Anne","FORGES LES EAUX",49.6120,1.5410],
-    ["0762020H","Primaire","Ecole primaire privée Sacré-Coeur","FORGES LES EAUX",49.6133,1.5444],
-    ["0762600N","Lycée","Lycée Delamare-Deboutteville","FORGES LES EAUX",49.6145,1.5360],
-    ["0762503H","Primaire","Ecole primaire les Petit Mots Passants","GAILLEFONTAINE",49.6542,1.6175],
-    ["0761422H","Élémentaire","Ecole élémentaire Lazare Hoche","GAILLEFONTAINE",49.6530,1.6180],
-    ["0760046M","Collège","Collège Rollon","GOURNAY EN BRAY",49.4800,1.7250],
-    ["0761734X","Collège","Collège Saint-Hildevert","GOURNAY EN BRAY",49.4805,1.7234],
-    ["0762021J","Primaire","Ecole primaire privée Saint Hildevert","GOURNAY EN BRAY",49.4810,1.7240],
-    ["0762325P","Maternelle","Ecole maternelle Pierre et Marie Curie","GOURNAY EN BRAY",49.4830,1.7210],
-    ["0763100G","Élémentaire","Ecole élémentaire Georges Brassens","GOURNAY EN BRAY",49.4845,1.7260],
-    ["0761427N","Maternelle","Ecole maternelle","HAUSSEZ",49.5694,1.6961],
-    ["0762177D","Collège","Collège la Hêtraie","LA FEUILLIE",49.4625,1.5150],
-    ["0762527J","Élémentaire","Ecole élémentaire les Prunus","LA FEUILLIE",49.4630,1.5160],
-    ["0762748Z","Maternelle","Ecole maternelle les petits feuillois","LA FEUILLIE",49.4635,1.5155],
-    ["0760314D","Élémentaire","Ecole élémentaire","LA HALLOTIERE",49.5186,1.4647],
-    ["0763133T","Maternelle","Ecole maternelle","MAUQUENCHY",49.5925,1.4883],
-    ["0761429R","Élémentaire","Ecole élémentaire","MESNIL MAUGER",49.6381,1.5208],
-    ["0761282F","Maternelle","Ecole maternelle","MONTROTY",49.4072,1.6669],
-    ["0760319J","Élémentaire","Ecole élémentaire","MORVILLE LE HERON",49.4667,1.4239],
-    ["0760449A","Élémentaire","Ecole élémentaire","MORVILLE LE HERON",49.4667,1.4239],
-    ["0762435J","Primaire","Ecole primaire Jean Moulin","NEUF MARCHE",49.4239,1.7161],
-    ["0761430S","Élémentaire","Ecole élémentaire","RONCHEROLLES EN BRAY",49.6267,1.4697],
-    ["0762540Y","Primaire","Ecole primaire Jean Jaurès","SERQUEUX",49.6319,1.5433],
-    ["0760322M","Primaire","Ecole primaire","SIGY EN BRAY",49.5447,1.4800],
-    ["0762465S","Primaire","Ecole primaire","SOMMERY",49.6264,1.4553]
+    ["0760306V","Maternelle","Ecole maternelle le Mont-Huleu","ARGUEIL",49.5396,1.5147,"9 rue du Mont Sauveur","76780","0235099616"],
+    ["0761270T","Élémentaire","Ecole élémentaire","AVESNES EN BRAY",49.4608,1.6749,"1 place de la Petite Morette","76220","0235903462"],
+    ["0761416B","Maternelle","Ecole maternelle","BEAUSSAULT",49.6848,1.5630,"480 rue Principale","76870","0235092971"],
+    ["0760307W","Élémentaire","Ecole élémentaire","BEAUVOIR EN LYONS",49.5033,1.5204,"Place du Commandant Schloesing","76220","0235096971"],
+    ["0761271U","Élémentaire","Ecole élémentaire","BEZANCOURT",49.4452,1.6165,"11 rue de l'Eglise","76220","0235092110"],
+    ["0761273W","Élémentaire","Ecole élémentaire","BREMONTIER MERVAL",49.5042,1.6111,"83 rue du Bois-Mallard","76220","0235090678"],
+    ["0761767H","Lycée","Lycée pro. agricole du Pays de Bray","BREMONTIER MERVAL",49.5050,1.6150,"Site de Merval - Le château","76220","0232899660"],
+    ["0763086S","Élémentaire","Ecole élémentaire","COMPAINVILLE",49.6644,1.5491,"Le Bourg","76440","0235905339"],
+    ["0762593F","Maternelle","Ecole maternelle Maurice Prévert","CROISY SUR ANDELLE",49.4632,1.3934,"31 route Nationale","76780","0235235948"],
+    ["0761274X","Primaire","Ecole primaire Roger Cressent","CUY ST FIACRE",49.5097,1.6961,"2 rue Roger Cressent","76220","0235903123"],
+    ["0761275Y","Élémentaire","Ecole élémentaire","DAMPIERRE EN BRAY",49.5375,1.6514,"5 place de la Mairie","76220","0235090824"],
+    ["0760446X","Élémentaire","Ecole élémentaire","ELBEUF SUR ANDELLE",49.4756,1.3986,"6 rue de l'Eglise","76780","0235020616"],
+    ["0762446W","Primaire","Ecole primaire Charles Trenet","FERRIERES EN BRAY",49.4827,1.7483,"1 chemin de la Messe","76220","0235090945"],
+    ["0761695E","Collège","Collège Saint-Exupéry","FORGES LES EAUX",49.6166,1.5375,"3 rue André Bertrand","76440","0235905370"],
+    ["0761297X","Maternelle","Ecole maternelle Marguerite Couturier","FORGES LES EAUX",49.6111,1.5422,"8 rue Beaufils","76440","0235905424"],
+    ["0761412X","Élémentaire","Ecole élémentaire Eugène Anne","FORGES LES EAUX",49.6120,1.5410,"24 rue Marette","76440","0235905187"],
+    ["0762020H","Primaire","Ecole primaire privée Sacré-Coeur","FORGES LES EAUX",49.6133,1.5444,"17 rue de la République","76440","0235905103"],
+    ["0762600N","Lycée","Lycée Delamare-Deboutteville","FORGES LES EAUX",49.6145,1.5360,"5 rue André Bertrand","76440","0235905436"],
+    ["0762503H","Primaire","Ecole primaire les Petit Mots Passants","GAILLEFONTAINE",49.6542,1.6175,"15 rue de la Foulerie","76870","0235096248"],
+    ["0761422H","Élémentaire","Ecole élémentaire Lazare Hoche","GAILLEFONTAINE",49.6530,1.6180,"17 rue de la Foulerie","76870","0235909150"],
+    ["0760046M","Collège","Collège Rollon","GOURNAY EN BRAY",49.4800,1.7250,"24 bis rue Croquet du Bosc","76220","0235900484"],
+    ["0761734X","Collège","Collège Saint-Hildevert","GOURNAY EN BRAY",49.4805,1.7234,"3 boulevard de Montmorency (BP 113)","76220","0235900270"],
+    ["0762021J","Primaire","Ecole primaire privée Saint Hildevert","GOURNAY EN BRAY",49.4810,1.7240,"3 boulevard de Montmorency","76220","0235900270"],
+    ["0762325P","Maternelle","Ecole maternelle Pierre et Marie Curie","GOURNAY EN BRAY",49.4830,1.7210,"1 rue Pierre et Marie Curie","76220","0235900616"],
+    ["0763100G","Élémentaire","Ecole élémentaire Georges Brassens","GOURNAY EN BRAY",49.4845,1.7260,"4 rue Legrand Baudu","76220","0235900912"],
+    ["0761427N","Maternelle","Ecole maternelle","HAUSSEZ",49.5694,1.6961,"3 rue des Moissonneurs","76440","0235906498"],
+    ["0762177D","Collège","Collège la Hêtraie","LA FEUILLIE",49.4625,1.5150,"4 rue du Centre","76220","0235908046"],
+    ["0762527J","Élémentaire","Ecole élémentaire les Prunus","LA FEUILLIE",49.4630,1.5160,"7 rue des Ecoles","76220","0235908215"],
+    ["0762748Z","Maternelle","Ecole maternelle les petits feuillois","LA FEUILLIE",49.4635,1.5155,"3 rue du Val Laurent","76220","0235908380"],
+    ["0760314D","Élémentaire","Ecole élémentaire","LA HALLOTIERE",49.5186,1.4647,"Rue Eugène Bisson","76780","0235091247"],
+    ["0763133T","Maternelle","Ecole maternelle","MAUQUENCHY",49.5925,1.4883,"Impasse de l'Ecole","76440","0235902762"],
+    ["0761429R","Élémentaire","Ecole élémentaire","MESNIL MAUGER",49.6381,1.5208,"Route du Centre","76440","0232890973"],
+    ["0761282F","Maternelle","Ecole maternelle","MONTROTY",49.4072,1.6669,"Place de l'Eglise","76220","0235098471"],
+    ["0760319J","Élémentaire","Ecole élémentaire","MORVILLE LE HERON",49.4667,1.4239,"1240 rue Saint-Ouen","76780","0235906432"],
+    ["0760449A","Élémentaire","Ecole élémentaire","MORVILLE LE HERON",49.4667,1.4239,"Le Héron","76780","0235234414"],
+    ["0762435J","Primaire","Ecole primaire Jean Moulin","NEUF MARCHE",49.4239,1.7161,"4 rue Jules Ferry","76220","0235906208"],
+    ["0761430S","Élémentaire","Ecole élémentaire","RONCHEROLLES EN BRAY",49.6267,1.4697,"5 rue de la Mairie","76440","0235096482"],
+    ["0762540Y","Primaire","Ecole primaire Jean Jaurès","SERQUEUX",49.6319,1.5433,"1058 route de Neufchâtel","76440","0277250067"],
+    ["0760322M","Primaire","Ecole primaire","SIGY EN BRAY",49.5447,1.4800,"Bourg","76780","0235906107"],
+    ["0762465S","Primaire","Ecole primaire","SOMMERY",49.6264,1.4553,"Le Bourg","76440","0235090904"]
   ].map(function(r){
-    return {uai:r[0], type:r[1], name:r[2], commune:r[3], lat:r[4], lon:r[5]};
+    return {uai:r[0], type:r[1], name:r[2], commune:r[3], lat:r[4], lon:r[5], street:r[6], cp:r[7], tel:r[8]};
   });
+
+  // "0235903462" -> "02 35 90 34 62" ; laisse tel quel si déjà espacé (fixes agricoles/lycées)
+  function formatPhone(tel){
+    return /^\d{10}$/.test(tel) ? tel.replace(/(\d{2})(?=\d)/g, '$1 ').trim() : tel;
+  }
 
   const TYPE_COLORS = {
     "Maternelle":   "#e8734a",
@@ -414,9 +440,10 @@
       '<div class="pas-popup">'+
       '<span class="popup-type" style="background:'+color+'">'+d.type+'</span>'+
       '<p class="popup-name">'+d.name+'</p>'+
-      '<div class="popup-row"><b>Commune :</b> '+titleCase(d.commune)+'</div>'+
+      '<div class="popup-row"><b>Adresse :</b> '+d.street+', '+d.cp+' '+titleCase(d.commune)+'</div>'+
+      '<div class="popup-row"><b>Téléphone :</b> <a href="tel:+33'+d.tel.replace(/^0/,'')+'">'+formatPhone(d.tel)+'</a></div>'+
       '<div class="popup-row"><b>Code UAI :</b> '+d.uai+'</div>'+
-      '</div>', {className:'pas-popup', maxWidth:260}
+      '</div>', {className:'pas-popup', maxWidth:280}
     );
     items.push({data:d, marker:marker});
   });
@@ -614,6 +641,8 @@
     const c = map.getCenter();
     console.log('Zoom:', map.getZoom().toFixed(2), '| Centre:', c.lat.toFixed(5), c.lng.toFixed(5));
   });
+  map.on('popupopen', function(){ svg.classList.add('connectors-hidden'); });
+  map.on('popupclose', function(){ svg.classList.remove('connectors-hidden'); });
   window.addEventListener('resize', onWindowResize);
   map.whenReady(function(){ setTimeout(function(){ sizeColumns(); scheduleUpdate(); }, 60); });
   setTimeout(function(){ sizeColumns(); scheduleUpdate(); }, 300); // fonts / layout settle
