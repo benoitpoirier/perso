@@ -311,7 +311,8 @@
     const address = d.street+', '+d.cp+' '+titleCase(d.commune)+', France';
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     if(isIOS){
-      const wazeUrl = 'waze://ul?ll='+d.lat+','+d.lon+'&navigate=yes';
+      // le schéma custom Waze n'utilise pas le segment "ul" (réservé aux liens universels waze.com/ul)
+      const wazeUrl = 'waze://?ll='+d.lat+','+d.lon+'&q='+encodeURIComponent(address)+'&navigate=yes';
       const appleUrl = 'https://maps.apple.com/?daddr='+encodeURIComponent(address)+'&ll='+d.lat+','+d.lon;
       // si Waze n'est pas installé, iOS ne quitte jamais la page : on bascule vers Apple Plans après un court délai
       let fellBack = false;
