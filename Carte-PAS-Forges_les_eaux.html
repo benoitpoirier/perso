@@ -47,9 +47,6 @@
   /* ---------- Map stage ---------- */
   #map-stage{position:absolute;inset:0;}
   #map{position:absolute;inset:0;background:#eef1ee;}
-  /* Les zones communales restent lisibles avec ou sans fond de carte. */
-  .leaflet-pane.leaflet-commune-pane{z-index:250;}
-  .leaflet-pane.leaflet-tile-pane{z-index:200;}
   #connectors{position:absolute;inset:0;width:100%;height:100%;z-index:400;pointer-events:none;transition:opacity .12s ease;}
   /* le pane popup de Leaflet est piégé dans le contexte d'empilement transformé de la carte : impossible de le faire
      passer au-dessus de ce SVG (sibling) via z-index. On masque donc les fils tant qu'une popup est ouverte. */
@@ -81,15 +78,9 @@
     pointer-events:none;
   }
   .leaflet-tooltip.context-label::before{display:none;}
-  /* ---------- Chefs-lieux / noms des communes ---------- */
-  .leaflet-tooltip.commune-main-label{
-    background:transparent;border:none;box-shadow:none;padding:0;margin:0;
-    font-family:'Inter',sans-serif;font-weight:600;font-size:11px;
-    color:#737b84;letter-spacing:.1px;white-space:nowrap;
-    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 5px #fff;
-    pointer-events:none;
-  }
+  .leaflet-tooltip.commune-main-label{background:transparent;border:none;box-shadow:none;padding:0;margin:0;font-family:'Inter',sans-serif;font-weight:600;font-size:11px;color:#737b84;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 5px #fff;pointer-events:none;}
   .leaflet-tooltip.commune-main-label::before{display:none;}
+
   /* ---------- Label columns ---------- */
   .label-col{
     position:absolute;
@@ -238,8 +229,7 @@
   .menu-item:hover{background:#f3f4f6;}
   .menu-icon{font-size:15px;line-height:1;}
   .menu-check{justify-content:space-between;gap:16px;cursor:pointer;}
-  .menu-check-label{display:flex;align-items:center;gap:9px;}
-  .menu-check input{accent-color:#1a9e88;width:16px;height:16px;margin:0;cursor:pointer;}
+  .menu-check input{accent-color:#1a9e88;width:16px;height:16px;margin:0;}
   #poster-header .badge{
     display:inline-block;margin-top:6px;font-size:10px;font-weight:600;letter-spacing:.6px;
     text-transform:uppercase;color:#1a9e88;background:#eafaf6;border:1px solid #bfe9de;
@@ -329,18 +319,9 @@
     <button id="menu-toggle-btn" type="button" title="Options" aria-label="Ouvrir le menu" aria-haspopup="true" aria-expanded="false">⋮</button>
     <div id="header-menu" role="menu">
       <button id="reset-btn" type="button" class="menu-item" role="menuitem"><span class="menu-icon" aria-hidden="true">🎯</span>Centrer</button>
-      <label class="menu-item menu-check" role="menuitemcheckbox">
-        <span class="menu-check-label"><span class="menu-icon" aria-hidden="true">🗺️</span>Fond de carte</span>
-        <input id="basemap-toggle" type="checkbox" checked aria-label="Afficher le fond de carte">
-      </label>
-      <label class="menu-item menu-check" role="menuitemcheckbox">
-        <span class="menu-check-label"><span class="menu-icon" aria-hidden="true">▱</span>Zones communales</span>
-        <input id="communes-toggle" type="checkbox" checked aria-label="Afficher les zones communales">
-      </label>
-      <label class="menu-item menu-check" role="menuitemcheckbox">
-        <span class="menu-check-label"><span class="menu-icon" aria-hidden="true">●</span>Noms des communes</span>
-        <input id="commune-labels-toggle" type="checkbox" aria-label="Afficher l'emplacement et le nom des communes">
-      </label>
+      <label class="menu-item menu-check"><span>🗺️ Fond de carte</span><input id="basemap-toggle" type="checkbox" checked></label>
+      <label class="menu-item menu-check"><span>▱ Zones communales</span><input id="communes-toggle" type="checkbox" checked></label>
+      <label class="menu-item menu-check"><span>● Noms des communes</span><input id="commune-labels-toggle" type="checkbox"></label>
       <button id="print-btn" type="button" class="menu-item" role="menuitem"><span class="menu-icon" aria-hidden="true">🖨️</span>Imprimer</button>
       <button id="print-hd-btn" type="button" class="menu-item" role="menuitem"><span class="menu-icon" aria-hidden="true">🖼️</span>Impression HD (fixe)</button>
     </div>
@@ -349,7 +330,7 @@
   <div id="legend">
     <h3>Types d'établissement</h3>
     <div id="legend-items"></div>
-    <div class="credits" id="map-credits">Zones communales : chargement… · Données scolaires PAS</div>
+    <div class="credits">Fond de carte © OpenStreetMap · Données scolaires PAS</div>
   </div>
 </div>
 
@@ -358,37 +339,14 @@
 (function(){
   "use strict";
 
-  /* ==========================================================
-     CONFIGURATION DES ZONES COMMUNALES
-     Modifier uniquement ce bloc pour changer de source.
-
-     Source recommandée (sans clé) : API Découpage administratif / data.gouv.fr.
-     L'URL doit renvoyer un FeatureCollection GeoJSON de Polygon/MultiPolygon.
-     Pour une source OSM/Overpass, utiliser une passerelle qui renvoie directement
-     du GeoJSON, ou un fichier .geojson local placé à côté de cette page.
-     ========================================================== */
   const COMMUNE_ZONES_CONFIG = {
-    sourceName: "API Découpage administratif (data.gouv.fr)",
-    url: "https://geo.api.gouv.fr/communes?codeDepartement=76&format=geojson&geometry=contour",
-    // Source ponctuelle indépendante : position géographique fournie par l'API,
-    // et non centre calculé de l'emprise du polygone.
-    placesUrl: "https://geo.api.gouv.fr/communes?codeDepartement=76&format=geojson&geometry=centre",
-    // Recherche nationale par nom pour les villes de contexte situées dans plusieurs départements.
-    referencePlaceUrl: "https://geo.api.gouv.fr/communes?nom={name}&fields=nom,code,centre,departement&format=geojson&geometry=centre",
-    nameProperty: "nom",
-    codeProperty: "code",
-    cacheKey: "pas-communes-76-v1",
-    cacheDurationMs: 7 * 24 * 60 * 60 * 1000,
-    concernedFillColor: "#bfe8c4",   // commune comportant au moins un PIN
-    otherFillColor: "#e5e7eb",       // commune sans PIN
-    borderColor: "#7a8580",
-    fillOpacity: 0.62,
-    weight: 1.1,
-    labelColor: "#737b84",
-    labelPointColor: "#9aa1ab",
-    labelPointRadius: 2.5
+    sourceName:"API Découpage administratif (data.gouv.fr)",
+    contoursUrl:"https://geo.api.gouv.fr/communes?codeDepartement=76&format=geojson&geometry=contour",
+    placesUrl:"https://geo.api.gouv.fr/communes?codeDepartement=76&format=geojson&geometry=centre",
+    referencePlaceUrl:"https://geo.api.gouv.fr/communes?nom={name}&fields=nom,code,centre,departement&format=geojson&geometry=centre",
+    nameProperty:"nom", codeProperty:"code", concernedFillColor:"#bfe8c4", otherFillColor:"#e5e7eb",
+    borderColor:"#7a8580", fillOpacity:0.62, weight:1.1
   };
-
   // longitude médiane des établissements : fixe la frontière colonne gauche / colonne droite
   const SPLIT_LONGITUDE = 1.5439;
 
@@ -467,14 +425,7 @@
   };
   const TYPE_ORDER = ["Maternelle","Élémentaire","Primaire","Collège","Lycée"];
 
-  // Grandes villes de repère affichées en permanence.
-  // Seuls leurs noms sont maintenus ici : leurs coordonnées sont obtenues depuis
-  // la même API géographique que celles des communes et ne sont plus codées en dur.
-  const REFERENCE_CITY_NAMES = [
-    "Neufchâtel-en-Bray", "Londinières", "Aumale", "Gisors", "Buchy",
-    "Beauvais", "Rouen", "Roncherolles-sur-le-Vivier", "Quincampoix"
-  ];
-
+  const REFERENCE_CITY_NAMES = ["Neufchâtel-en-Bray","Londinières","Aumale","Gisors","Buchy","Beauvais","Rouen","Roncherolles-sur-le-Vivier","Quincampoix"];
   /* ==========================================================
      2. ANTI-SUPERPOSITION DES PINS (établissements co-localisés)
      ========================================================== */
@@ -509,200 +460,65 @@
     maxZoom:16
   });
 
-  // Fond de carte optionnel, commandé depuis le menu.
+  // Esri "Light Gray Canvas" : fond neutre gratuit, sans clé API ni inscription
   const baseMapLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
     attribution:'Fond de carte &copy; <a href="https://www.esri.com">Esri</a> — Esri, DeLorme, NAVTEQ',
     maxNativeZoom:16,
     maxZoom:16
   }).addTo(map);
 
-  // Pane dédié : zones au-dessus des tuiles, mais sous les marqueurs et libellés.
-  map.createPane('communePane');
-  map.getPane('communePane').classList.add('leaflet-commune-pane');
-  map.getPane('communePane').style.zIndex = 250;
-  let communeZonesLayer = null;
-  const communeMainPlacesLayer = L.layerGroup();
-  let communePlacesGeoJson = null;
-  const concernedCommuneCodes = new Set();
-
-  // Test géométrique autonome, sans dépendance externe : évite les problèmes de noms
-  // (accents, communes nouvelles, tirets) en identifiant les communes qui contiennent un PIN.
-  function pointInRing(lon, lat, ring){
-    let inside = false;
-    for(let i=0, j=ring.length-1; i<ring.length; j=i++){
-      const xi=ring[i][0], yi=ring[i][1], xj=ring[j][0], yj=ring[j][1];
-      const intersects = ((yi > lat) !== (yj > lat)) &&
-        (lon < (xj-xi) * (lat-yi) / ((yj-yi) || Number.EPSILON) + xi);
-      if(intersects) inside = !inside;
-    }
-    return inside;
-  }
-  function pointInPolygon(lon, lat, polygon){
-    if(!polygon || !polygon.length || !pointInRing(lon, lat, polygon[0])) return false;
-    for(let i=1;i<polygon.length;i++) if(pointInRing(lon, lat, polygon[i])) return false;
-    return true;
-  }
-  function featureContainsAnyPin(feature){
-    const g = feature && feature.geometry;
-    if(!g) return false;
-    const polygons = g.type === 'Polygon' ? [g.coordinates] :
-                     g.type === 'MultiPolygon' ? g.coordinates : [];
-    return RAW_DATA.some(function(d){
-      return polygons.some(function(poly){ return pointInPolygon(d.lon, d.lat, poly); });
-    });
-  }
-  function communeStyle(feature){
-    const concerned = featureContainsAnyPin(feature);
-    feature.properties = feature.properties || {};
-    feature.properties.__pasConcerned = concerned;
-    return {
-      pane:'communePane', color:COMMUNE_ZONES_CONFIG.borderColor,
-      weight:COMMUNE_ZONES_CONFIG.weight, opacity:0.9,
-      fillColor: concerned ? COMMUNE_ZONES_CONFIG.concernedFillColor : COMMUNE_ZONES_CONFIG.otherFillColor,
-      fillOpacity:COMMUNE_ZONES_CONFIG.fillOpacity,
-      interactive:true
-    };
-  }
-  function updateMapCredits(message){
-    const el = document.getElementById('map-credits');
-    if(el) el.textContent = message;
-  }
-  // Les libellés utilisent exclusivement les points géographiques renvoyés par
-  // placesUrl. Aucun centroïde ou centre d'emprise n'est calculé côté navigateur.
-  function renderCommuneMainPlaces(){
-    communeMainPlacesLayer.clearLayers();
-    if(!communePlacesGeoJson || !Array.isArray(communePlacesGeoJson.features)) return;
-    communePlacesGeoJson.features.forEach(function(feature){
-      const p = feature.properties || {};
-      const code = String(p[COMMUNE_ZONES_CONFIG.codeProperty] || '');
-      const name = p[COMMUNE_ZONES_CONFIG.nameProperty];
-      const g = feature.geometry;
-      const referenceCityNames = new Set(REFERENCE_CITY_NAMES.map(normalizeCommuneName));
-      // Règles métier strictes :
-      // 1. une commune verte (au moins un PIN) ne reçoit jamais ce libellé ;
-      // 2. une commune déjà affichée en permanence via REFERENCE_CITY_NAMES est exclue
-      //    afin de ne pas créer de doublon lors de l'activation de l'option.
-      if(!name || !g || g.type !== 'Point' || concernedCommuneCodes.has(code) ||
-         referenceCityNames.has(normalizeCommuneName(name))) return;
-      const lon = g.coordinates[0], lat = g.coordinates[1];
-      if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-      const point = L.circleMarker([lat, lon], {
-        pane:'markerPane', radius:COMMUNE_ZONES_CONFIG.labelPointRadius,
-        weight:1, color:'#ffffff', fillColor:COMMUNE_ZONES_CONFIG.labelPointColor,
-        fillOpacity:1, opacity:0.9, interactive:false
-      });
-      point.bindTooltip(name, {
-        permanent:true, direction:'top', offset:[0,-5],
-        className:'commune-main-label', interactive:false
-      });
-      communeMainPlacesLayer.addLayer(point);
-    });
-    if(document.getElementById('commune-labels-toggle').checked && !map.hasLayer(communeMainPlacesLayer)){
-      communeMainPlacesLayer.addTo(map);
-    }
-  }
-  function renderCommuneZones(geojson){
-    if(communeZonesLayer) communeZonesLayer.remove();
-    concernedCommuneCodes.clear();
-    // La classification vert/gris est calculée une seule fois avant de créer
-    // les libellés afin que les communes vertes soient exclues sans ambiguïté.
-    (geojson.features || []).forEach(function(feature){
-      if(featureContainsAnyPin(feature)){
-        const p = feature.properties || {};
-        concernedCommuneCodes.add(String(p[COMMUNE_ZONES_CONFIG.codeProperty] || ''));
-      }
-    });
-    communeZonesLayer = L.geoJSON(geojson, {
-      pane:'communePane', style:communeStyle,
-      onEachFeature:function(feature, layer){
-        const name = feature.properties && feature.properties[COMMUNE_ZONES_CONFIG.nameProperty];
-        if(name) layer.bindTooltip(name + (feature.properties.__pasConcerned ? ' · secteur PAS' : ''), {sticky:true});
-      }
-    });
-    if(document.getElementById('communes-toggle').checked) communeZonesLayer.addTo(map);
-    renderCommuneMainPlaces();
-    updateMapCredits('Zones communales © ' + COMMUNE_ZONES_CONFIG.sourceName + ' · Données scolaires PAS');
-  }
-  function loadCommunePlaces(){
-    return fetch(COMMUNE_ZONES_CONFIG.placesUrl)
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-      .then(function(data){
-        if(!data || data.type !== 'FeatureCollection') throw new Error('GeoJSON ponctuel attendu');
-        communePlacesGeoJson = data;
-        renderCommuneMainPlaces();
-      })
-      .catch(function(err){
-        console.error('Positions des communes :', err);
-        document.getElementById('commune-labels-toggle').checked = false;
-      });
-  }
-  loadCommunePlaces();
-  function loadCommuneZones(){
-    let cached = null;
-    try{
-      cached = JSON.parse(localStorage.getItem(COMMUNE_ZONES_CONFIG.cacheKey) || 'null');
-      if(cached && Date.now() - cached.savedAt < COMMUNE_ZONES_CONFIG.cacheDurationMs){
-        renderCommuneZones(cached.data); return Promise.resolve();
-      }
-    }catch(e){ /* cache indisponible ou invalide : téléchargement normal */ }
-    return fetch(COMMUNE_ZONES_CONFIG.url)
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-      .then(function(data){
-        if(!data || data.type !== 'FeatureCollection') throw new Error('GeoJSON FeatureCollection attendu');
-        try{ localStorage.setItem(COMMUNE_ZONES_CONFIG.cacheKey, JSON.stringify({savedAt:Date.now(), data:data})); }catch(e){}
-        renderCommuneZones(data);
-      })
-      .catch(function(err){
-        console.error('Zones communales :', err);
-        updateMapCredits('Zones communales indisponibles · Données scolaires PAS');
-        document.getElementById('communes-toggle').checked = false;
-      });
-  }
-  loadCommuneZones();
-
   // vue par défaut fixe (voir DEFAULT_VIEW en haut du script), zoom adapté à la largeur d'écran actuelle ;
   // window.__PRINT_VIEW (injecté uniquement dans la copie imprimée) impose le centrage/zoom écran d'origine
   const printView = window.__PRINT_VIEW;
   map.setView(printView ? printView.center : DEFAULT_VIEW.center, printView ? printView.zoom : zoomForCurrentWidth());
 
-  // Villes de repère : coordonnées chargées depuis l'API, sans latitude/longitude en dur.
-  // La comparaison normalisée permet de retenir l'homonyme exact si l'API renvoie plusieurs communes.
-  function normalizeCommuneName(value){
-    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
-  function addReferenceCityMarker(name, feature){
-    const g = feature && feature.geometry;
-    if(!g || g.type !== 'Point') return;
-    const lon = g.coordinates[0], lat = g.coordinates[1];
-    if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-    L.circleMarker([lat, lon], {
-      radius:3, weight:1, color:'#9aa1ab', fillColor:'#c8ccd1', fillOpacity:0.9, interactive:false
-    }).addTo(map);
-    L.tooltip({
-      permanent:true, direction:'top', offset:[0,-8],
-      className:'context-label', interactive:false
-    }).setLatLng([lat, lon]).setContent(name).addTo(map);
-  }
-  function loadReferenceCities(){
-    return Promise.all(REFERENCE_CITY_NAMES.map(function(name){
-      const url = COMMUNE_ZONES_CONFIG.referencePlaceUrl.replace('{name}', encodeURIComponent(name));
-      return fetch(url)
-        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-        .then(function(data){
-          const features = data && Array.isArray(data.features) ? data.features : [];
-          const expected = normalizeCommuneName(name);
-          const feature = features.find(function(f){
-            return normalizeCommuneName(f.properties && f.properties[COMMUNE_ZONES_CONFIG.nameProperty]) === expected;
-          });
-          if(!feature) throw new Error('Commune introuvable');
-          addReferenceCityMarker(name, feature);
-        })
-        .catch(function(err){ console.error('Ville de repère « '+name+' » :', err); });
-    }));
-  }
-  loadReferenceCities();
+  function normalizeCommuneName(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');}
+  function addReferenceCity(name,f){const g=f&&f.geometry;if(!g||g.type!=='Point')return;const lon=g.coordinates[0],lat=g.coordinates[1];L.circleMarker([lat,lon],{radius:3,weight:1,color:'#9aa1ab',fillColor:'#c8ccd1',fillOpacity:.9,interactive:false}).addTo(map);L.tooltip({permanent:true,direction:'top',offset:[0,-8],className:'context-label',interactive:false}).setLatLng([lat,lon]).setContent(name).addTo(map);}
+  REFERENCE_CITY_NAMES.forEach(function(name){fetch(COMMUNE_ZONES_CONFIG.referencePlaceUrl.replace('{name}',encodeURIComponent(name))).then(r=>r.json()).then(function(data){const expected=normalizeCommuneName(name),f=(data.features||[]).find(x=>normalizeCommuneName(x.properties&&x.properties.nom)===expected);if(f)addReferenceCity(name,f);}).catch(e=>console.error('Ville de repère',name,e));});
 
+  let communeZonesLayer=null, communePlacesGeoJson=null;
+  const communeNamesLayer=L.layerGroup(), concernedCodes=new Set();
+  // Noms des communes portées par les PIN affichés. Cette liste complète le test
+  // géométrique afin qu'une commune soit verte si son nom figure dans RAW_DATA,
+  // même si les coordonnées du PIN sont exceptionnellement placées hors contour.
+  const pinCommuneNames = new Set(RAW_DATA.map(function(d){ return normalizeCommuneName(d.commune); }));
+  function pointInRing(lon,lat,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];if(((yi>lat)!==(yj>lat))&&(lon<(xj-xi)*(lat-yi)/((yj-yi)||Number.EPSILON)+xi))inside=!inside;}return inside;}
+  function pointInPolygon(lon,lat,p){if(!p||!p.length||!pointInRing(lon,lat,p[0]))return false;for(let i=1;i<p.length;i++)if(pointInRing(lon,lat,p[i]))return false;return true;}
+  function containsPin(f){const g=f&&f.geometry,polys=!g?[]:g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];return RAW_DATA.some(d=>polys.some(p=>pointInPolygon(d.lon,d.lat,p)));}
+  function zoneStyle(f){
+    const p=f.properties||(f.properties={}), code=String(p.code||'');
+    const green=concernedCodes.has(code);
+    p.__pasConcerned=green;
+    return {color:COMMUNE_ZONES_CONFIG.borderColor,weight:COMMUNE_ZONES_CONFIG.weight,
+      fillColor:green?COMMUNE_ZONES_CONFIG.concernedFillColor:COMMUNE_ZONES_CONFIG.otherFillColor,
+      fillOpacity:COMMUNE_ZONES_CONFIG.fillOpacity};
+  }
+  function renderNames(){
+    communeNamesLayer.clearLayers();
+    if(!communePlacesGeoJson)return;
+    const refs=new Set(REFERENCE_CITY_NAMES.map(normalizeCommuneName));
+    (communePlacesGeoJson.features||[]).forEach(function(f){
+      const p=f.properties||{}, code=String(p.code||''), name=p.nom, g=f.geometry;
+      if(!name||!g||g.type!=='Point'||concernedCodes.has(code)||refs.has(normalizeCommuneName(name)))return;
+      const pt=L.circleMarker([g.coordinates[1],g.coordinates[0]],{radius:2.5,weight:1,color:'#fff',fillColor:'#9aa1ab',fillOpacity:1,interactive:false});
+      pt.bindTooltip(name,{permanent:true,direction:'top',offset:[0,-5],className:'commune-main-label',interactive:false});
+      communeNamesLayer.addLayer(pt);
+    });
+    if(document.getElementById('commune-labels-toggle').checked)communeNamesLayer.addTo(map);
+  }
+  Promise.all([fetch(COMMUNE_ZONES_CONFIG.contoursUrl).then(r=>r.json()),fetch(COMMUNE_ZONES_CONFIG.placesUrl).then(r=>r.json())]).then(function(all){
+    const geo=all[0]; communePlacesGeoJson=all[1];
+    (geo.features||[]).forEach(function(f){
+      const p=f.properties||{}, code=String(p.code||''), communeName=normalizeCommuneName(p[COMMUNE_ZONES_CONFIG.nameProperty]);
+      if(containsPin(f) || pinCommuneNames.has(communeName)) concernedCodes.add(code);
+    });
+    communeZonesLayer=L.geoJSON(geo,{style:zoneStyle,onEachFeature:function(f,l){
+      const name=(f.properties||{})[COMMUNE_ZONES_CONFIG.nameProperty];
+      if(name)l.bindTooltip(name,{sticky:true});
+    }});
+    if(document.getElementById('communes-toggle').checked)communeZonesLayer.addTo(map);
+    renderNames();
+  }).catch(e=>console.error('Zones communales',e));
   /* ==========================================================
      4. MARQUEURS PERSONNALISÉS
      ========================================================== */
@@ -1084,19 +900,9 @@
     if(e.key === 'Escape') closeHeaderMenu();
   });
 
-  document.getElementById('basemap-toggle').addEventListener('change', function(){
-    if(this.checked){ if(!map.hasLayer(baseMapLayer)) baseMapLayer.addTo(map); }
-    else if(map.hasLayer(baseMapLayer)) map.removeLayer(baseMapLayer);
-  });
-  document.getElementById('communes-toggle').addEventListener('change', function(){
-    if(!communeZonesLayer) return;
-    if(this.checked){ if(!map.hasLayer(communeZonesLayer)) communeZonesLayer.addTo(map); }
-    else if(map.hasLayer(communeZonesLayer)) map.removeLayer(communeZonesLayer);
-  });
-  document.getElementById('commune-labels-toggle').addEventListener('change', function(){
-    if(this.checked){ if(!map.hasLayer(communeMainPlacesLayer)) communeMainPlacesLayer.addTo(map); }
-    else if(map.hasLayer(communeMainPlacesLayer)) map.removeLayer(communeMainPlacesLayer);
-  });
+  document.getElementById('basemap-toggle').addEventListener('change',function(){this.checked?baseMapLayer.addTo(map):map.removeLayer(baseMapLayer);});
+  document.getElementById('communes-toggle').addEventListener('change',function(){if(!communeZonesLayer)return;this.checked?communeZonesLayer.addTo(map):map.removeLayer(communeZonesLayer);});
+  document.getElementById('commune-labels-toggle').addEventListener('change',function(){this.checked?communeNamesLayer.addTo(map):map.removeLayer(communeNamesLayer);});
   document.getElementById('print-btn').addEventListener('click', function(){
     closeHeaderMenu();
     printCurrentView();
